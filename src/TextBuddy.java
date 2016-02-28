@@ -1,6 +1,8 @@
 /**
  * This class is used to save user input into text file after each user operation.
  * User can add contents and delete the contents in the file by the line number.
+ * User able to sort lines alphabetically.
+ * Search command to search for a word in the file and return the lines containing that word.
  * The storage is limit for this version is 10 lines of information.
  * In the case more than 10 lines of information was entered,
  * we store only the latest one. 
@@ -40,6 +42,8 @@ import java.io.IOException;
 import java.util.LinkedList;
 import java.util.Queue;
 import java.util.Scanner;
+import java.util.ArrayList;
+import java.util.Collections;
 
 public class TextBuddy {
 	
@@ -52,18 +56,28 @@ public class TextBuddy {
 	private static final String MESSAGE_DELETEERROR = "content is not in %1$s!";
 	private static final String MESSAGE_INVALID_FORMAT = "invalid command format :%1$s";
 	private static final String MESSAGE_FILESAVEERROR = "%1$d not found.";
-	private static final String strFileName = "chat.txt";
-	private static final File saveFileName = new File("chat.txt"); //saved file name
-	private static final int MAX = 10; //max length of line (can be edit)
+	private static final String MESSAGE_CHANGEFILENAME = "do you want to change file name %1$s? YES or NO";
+	private static final String MESSAGE_KEYNEWFILENAME = "Key new save file name: ";
+	private static final String MESSAGE_ADDNEWFILENAME = "save file name change to %1$s.";
+	private static final String MESSAGE_SORT = "lines sorted alphabetically";
+	private static final String MESSAGE_SEARCH = "those line(s) containing %1$s is/are";
+	private static final String MESSAGE_ZERO_SEARCH_RESULT = "none of the lines.";
+	private static final int MAX = 500; //max length of line (can be edit)
+	private static String strFileName = "chat";
+	protected static File saveFileNameTest = new File(strFileName+".txt");
+	private static File saveFileName = saveFileNameTest;
 	private static Queue<String> testAllChatQueue = new LinkedList<String> ();
-	private static Queue<String> allChatQueue; //store text
+	private static Queue<String> allChatQueue = testAllChatQueue; //store text
 	private static Scanner scanner = new Scanner(System.in); //read input
 	private static int totalNumChat = 0; //total number of lines
 	
-	// These are the possible command types
-	enum COMMAND_TYPE {
-		ADD,DELETE,DISPLAY,CLEAR,INVALID, EXIT
+	/**
+	 *  These are the possible command types
+	 */
+	enum CommandType {
+		ADD, DELETE, DISPLAY, CLEAR, SORT, SEARCH, INVALID, EXIT
 	};
+	
 	/**User guide**
 	 * @param ADD      add, text here
 	 * @param DELETE   delete, number line here
@@ -71,49 +85,93 @@ public class TextBuddy {
 	 * @param CLEAR    clear all text in the file
 	 * @param INVAILD  format invalid, key again
 	 * @param EXIT     exit the program
+	 * @param Default  throw an error
 	 */
-	
 	public static void main(String[] args) {
-		
+
 		System.out.println(WELCOME_MESSAGE + saveFileName);
 		allChatQueue = new LinkedList<String> ();
-		getCommand("add hello");
-		executeCommand("add","hello");
+		isFileNameChanged();
+		saveFileName = new File(strFileName+".txt");
+		runTextBuddy();
+	}
+	
+	/**
+	 * The Example method is change save file name
+	 */
+	protected static boolean isFileNameChanged(){
+		
+		System.out.println(String.format(MESSAGE_CHANGEFILENAME, saveFileName));
+		String change = scanner.nextLine();
+		String newFileName;
+		
+		if (change.equals("YES")) {
+			System.out.println(MESSAGE_KEYNEWFILENAME);
+			newFileName = scanner.nextLine();
+			strFileName = newFileName;
+			System.out.println(String.format(MESSAGE_ADDNEWFILENAME, strFileName+".txt"));
+			return true;
+		}
+		return false;
+	}
+	
+	/**
+	 * The Example method is get the command and user input and display output
+	 */
+	private static void runTextBuddy(){
+		
 		while (true) {
-			//get the command and user input and display output
 			System.out.print("Command: ");
 			String input = scanner.nextLine();
-			String command = getCommand(input);
-			executeCommand(command,input);
+			String command = getFirstWord(input);
+			executeCommand(determineCommandType(command),input);
 		}
 	}
 	
-	private static void executeCommand(String command, String input) {
+	/**
+	 * The Example method execute the command key by the user
+	 * ADD:     add new text to file
+	 * DELETE:  delete the text by it's number 
+	 * DISPLAY: display all text saved
+	 * CLEAR:   clear all text 
+	 * SORT:    sort command to sort lines alphabetically
+	 * SEARCH:  search for a word in the file and return the lines containing that word.
+	 * INVAILD: the command key is invalid
+	 * Default: throw an error if the command is not recognized
+	 */
+	private static void executeCommand(CommandType command, String input) {
 		
-		COMMAND_TYPE commandType = determineCommandType(command);
-		
-		switch (commandType) {	
+		switch (command) {	
 		case ADD :
 			String chatText = getText(input);
-			System.out.println(addContent(input,chatText));
-			fileSaved();
+			System.out.println(addContent(chatText));
+			isFileSaved();
 			break;
 		
 		case DELETE :
 			int numToDelete = getLineNum(input);
 			System.out.println(delete(numToDelete));
-			fileSaved();
+			isFileSaved();
 			break;
 		
 		case DISPLAY :
-			System.out.println(display(input));
+			System.out.println(display());
 			break;
 		
 		case CLEAR :
 			System.out.println(clear());
-			fileSaved();
+			isFileSaved();
 			break;
 		
+		case SORT:
+			System.out.println(sort());
+			break;
+		
+		case SEARCH:
+			String strSearchKey = getText(input);
+			search(strSearchKey);
+			break;
+			
 		case INVALID :
 			System.out.println(String.format(MESSAGE_INVALID_FORMAT, input));
 			break;
@@ -122,27 +180,111 @@ public class TextBuddy {
 			System.exit(0);
 			break;
 		
-		default : //throw an error if the command is not recognized
+		default : 
 			System.out.println(String.format(MESSAGE_INVALID_FORMAT, input));
 			throw new Error("Unrecognized command type");
 		}
 	}
-	 
-	private static String addContent(String input, String chatText) {
-		//add new chat
+	
+	/**
+	 * The Example method is to search for a word in the file and
+	 * return the lines containing that word.
+	 */
+	private static void search(String strSearchKey) {
+		
+		Queue<String> tempQueue = new LinkedList<String> ();
+		int number = 0;
+		System.out.println(String.format(MESSAGE_SEARCH, strSearchKey));
+		
+		while(!allChatQueue.isEmpty()){
+			
+			if(hasSearchKey(strSearchKey,allChatQueue.peek())){
+				number+=1;
+				System.out.println(String.format(MESSAGE_DISPLAY, number,allChatQueue.peek()));
+			}
+			tempQueue.offer(allChatQueue.poll());
+		}
+		if(number==0){
+			System.out.println(String.format(MESSAGE_ZERO_SEARCH_RESULT));
+		}
+		allChatQueue = tempQueue;
+	}
+
+	
+	/**
+	 * The Example method is to search the if the words contain search key.
+	 * return true if it has the key and false if it don't
+	 */
+	protected static boolean hasSearchKey(String strSearchKey, String line){
+		
+		String[] splitSentence = line.split("\\s");
+		
+		for(String word : splitSentence){
+			if(word.equals(strSearchKey)){
+				return true;
+			}
+		}
+		return false;	
+	}
+	
+	/**
+	 * The Example method is sort command to sort lines alphabetically.
+	 */
+	protected static String sort() {
+		
+		ArrayList<String> tempArrList = new ArrayList<String> ();
+		
+		while (!allChatQueue.isEmpty()) {
+			tempArrList.add(allChatQueue.poll());
+		}
+		Collections.sort(tempArrList);
+		
+		try {
+			writeSortedListToFile(tempArrList);
+		} catch (IOException e) {
+			e.printStackTrace();
+		}
+		return MESSAGE_SORT;
+	}
+	
+	/**
+	 * The Example method is  write sorted lines into file.
+	 */
+	private static void writeSortedListToFile(ArrayList<String> list) throws IOException{
+		
+		FileWriter fileWriter = new FileWriter(saveFileName);
+		BufferedWriter buffWriter = new BufferedWriter(fileWriter);
+		
+		for(String line : list){
+			allChatQueue.offer(line);
+			buffWriter.write(line);
+			buffWriter.newLine();
+		}
+		buffWriter.flush(); //upload content to file
+		buffWriter.close(); //close file
+	}
+
+	/**
+	 * The Example method is add new chat and if it exceed max number of lines, earliest text will be deleted.
+	 * It return a feedback for user
+	 */
+	protected static String addContent(String chatText) {
+
 		if (totalNumChat >= MAX) { 
-			//if exceed max number of lines, earliest text will be deleted 
 			allChatQueue.poll();
 		} else {
 			totalNumChat++;
-			//System.out.println(count);//test the count
 		}
 		allChatQueue.offer(chatText);
 		return String.format(MESSAGE_ADDED, saveFileName, chatText);
 	}
 	
-	private static String delete(int input) {
-		//delete the chat with the line number
+	/**
+	 * The Example method is delete the chat with the line number and return feedback to user.
+	 * If line not found, return error message
+	 */
+	protected static String delete(int input) {
+		
 		Queue<String> tempQueue = new LinkedList<String> ();
 		String tempString = "";
 		
@@ -162,8 +304,11 @@ public class TextBuddy {
 		}
 	}
 	
-	private static String display(String input) {
-		//display all saved chat
+	/**
+	 * The Example method is display all saved chat.
+	 */
+	protected static String display() {
+		
 		Queue<String> tempQueue = new LinkedList<String> ();
 		String tempString = "";
 		
@@ -183,18 +328,29 @@ public class TextBuddy {
 		}
 	}
 	
+	/**
+	 * The Example method is to clear all chat from the file.
+	 */
 	protected static String clear() {
-		//clear all chat
+		
 		allChatQueue = testAllChatQueue;
 		allChatQueue.clear();
 		totalNumChat = 0;
 		return String.format(MESSAGE_CLEAR, saveFileName);
 	}
+	
+	/**
+	 * The Example method is to get current file name for testing purpose.
+	 */
 	protected static String getFileName(){
 		return strFileName;
 	}
+	
+	/**
+	 * The Example method is to write the chat into the file.
+	 */
 	private static void toSaveFile() throws IOException {
-		//write the chat into the file
+		
 		Queue<String> tempQueue = new LinkedList<String> ();
 		FileWriter fileWriter = new FileWriter(saveFileName);
 		BufferedWriter buffWriter = new BufferedWriter(fileWriter);
@@ -211,8 +367,11 @@ public class TextBuddy {
 		allChatQueue = tempQueue;
 	}
 	
-	protected static boolean fileSaved() {
-		//check if file is saved properly
+	/**
+	 * The Example method is to check if file is saved properly.
+	 */
+	protected static boolean isFileSaved() {
+		
 		try {
 			toSaveFile();
 			return true;
@@ -223,34 +382,47 @@ public class TextBuddy {
 		}
 	}
 	
-	private static COMMAND_TYPE determineCommandType(String commandTypeString) {
-		//get the command type
+	/**
+	 * The Example method is to determine the command type.
+	 */
+	protected static CommandType determineCommandType(String commandTypeString) {
+	
 		if (commandTypeString == null) {
 			throw new Error("command type string cannot be null!");
 		}
 		
 		if (commandTypeString.equalsIgnoreCase("add")) {
-			return COMMAND_TYPE.ADD;
+			return CommandType.ADD;
 		} else if (commandTypeString.equalsIgnoreCase("delete")) {
-			return COMMAND_TYPE.DELETE;
+			return CommandType.DELETE;
 		} else if (commandTypeString.equalsIgnoreCase("clear")) {
-			return COMMAND_TYPE.CLEAR;
+			return CommandType.CLEAR;
 		} else if (commandTypeString.equalsIgnoreCase("display")) {
-			return COMMAND_TYPE.DISPLAY;
+			return CommandType.DISPLAY;
+		} else if (commandTypeString.equalsIgnoreCase("sort")) {
+			return CommandType.SORT;
+		} else if (commandTypeString.equalsIgnoreCase("search")) {
+			return CommandType.SEARCH;
 		} else if (commandTypeString.equalsIgnoreCase("exit")) {
-		 	return COMMAND_TYPE.EXIT;
+		 	return CommandType.EXIT;
 		} else {
-			return COMMAND_TYPE.INVALID;
+			return CommandType.INVALID;
 		}
 	}
 	
+	/**
+	 * The Example method is to get the text which the user want to store.
+	 */
 	protected static String getText(String input) {
-		//get the text which the user want to store
-		return input.replace(getCommand(input), "").trim();
+		
+		return input.replace(getFirstWord(input), "").trim();
 	}
 	
-	private static int getLineNum(String input) {
-		//get the command in String
+	/**
+	 * The Example method is to get line number to be delete.
+	 */
+	protected static int getLineNum(String input) {
+		
 		input = getText(input);
 		int line;
 		
@@ -261,10 +433,14 @@ public class TextBuddy {
 		}
 		return line;
 	}
-	protected static String getCommand(String input) {
+	
+	/**
+	 * The Example method is to get the first word from the input.
+	 */
+	protected static String getFirstWord(String input) {
 		
-		String commandTypeString = input.trim().split("\\s+")[0];
-		return commandTypeString;
+		String firstName = input.trim().split("\\s+")[0];
+		return firstName;
 	}
 }
 		
